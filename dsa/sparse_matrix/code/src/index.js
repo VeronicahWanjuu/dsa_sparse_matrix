@@ -1,5 +1,4 @@
 const fs = require('fs');
-const readline = require('readline');
 
 class SparseMatrix {
  constructor(matrixFilePath = null, numRows = 0, numCols = 0) {
@@ -18,30 +17,32 @@ class SparseMatrix {
  const lines = fileContent.split('\n');
  
  // Parse rows and columns
- const rowsMatch = lines[0].match(/^rows=(\d+)$/);
- const colsMatch = lines[1].match(/^cols=(\d+)$/);
+ const rowsLine = lines[0].trim();
+ const colsLine = lines[1].trim();
  
- if (!rowsMatch || !colsMatch) {
- throw new Error("Input file has wrong format");
+ if (!rowsLine.startsWith('rows=') || !colsLine.startsWith('cols=')) {
+   throw new Error("Input file has wrong format");
  }
  
- this.rows = parseInt(rowsMatch[1]);
- this.cols = parseInt(colsMatch[1]);
+ this.rows = parseInt(rowsLine.substring(5));
+ this.cols = parseInt(colsLine.substring(5));
+ 
+ if (isNaN(this.rows) || isNaN(this.cols)) {
+   throw new Error("Input file has wrong format");
+ }
  
  for (let i = 2; i < lines.length; i++) {
- const line = lines[i].trim();
- if (!line) continue; // Skip empty lines
- 
- const elementMatch = line.match(/^\((\d+),\s*(\d+),\s*(-?\d+)\)$/);
- if (!elementMatch) {
- throw new Error("Input file has wrong format");
- }
- 
- const row = parseInt(elementMatch[1]);
- const col = parseInt(elementMatch[2]);
- const value = parseInt(elementMatch[3]);
- 
- this.setElement(row, col, value);
+   const line = lines[i].trim();
+   if (!line) continue; // Skip empty lines
+   
+   // Custom parsing function instead of regex
+   const elementData = this._parseElementLine(line);
+   if (!elementData) {
+     throw new Error("Input file has wrong format");
+   }
+   
+   const [row, col, value] = elementData;
+   this.setElement(row, col, value);
  }
  } catch (error) {
  if (error.code === 'ENOENT') {
@@ -50,6 +51,33 @@ class SparseMatrix {
  throw error;
  }
  }
+ 
+ // Custom parsing function
+ _parseElementLine(line) {
+   // Check if line starts with ( and ends with )
+   if (!line.startsWith('(') || !line.endsWith(')')) {
+     return null;
+   }
+   
+   // Extract content between parentheses
+   const content = line.substring(1, line.length - 1);
+   const parts = content.split(',');
+   
+   if (parts.length !== 3) {
+     return null;
+   }
+   
+   const row = parseInt(parts[0].trim());
+   const col = parseInt(parts[1].trim());
+   const value = parseInt(parts[2].trim());
+   
+   if (isNaN(row) || isNaN(col) || isNaN(value)) {
+     return null;
+   }
+   
+   return [row, col, value];
+ }
+ 
  getElement(currRow, currCol) {
  const key = `${currRow},${currCol}`;
  return this.data[key] || 0;
@@ -144,60 +172,58 @@ function multiplyMatrices(mat1, mat2) {
  return result;
  }
  
- // Create a map of rows to columns for the first matrix
- const mat1RowToColMap = {};
+
+ // Group non-zero entries by rows for mat1 and by columns for mat2
+ const mat1ByRows = {};
+ const mat2ByCols = {};
+ 
+ // Organize mat1 by rows
  for (const key in mat1.data) {
- const [row, col] = key.split(',').map(Number);
- if (!mat1RowToColMap[row]) {
- mat1RowToColMap[row] = new Set();
- }
- mat1RowToColMap[row].add(col);
+   const [row, col] = key.split(',').map(Number);
+   if (!mat1ByRows[row]) {
+     mat1ByRows[row] = {};
+   }
+   mat1ByRows[row][col] = mat1.data[key];
  }
  
- // Create a map of columns to rows for the second matrix
- const mat2ColToRowMap = {};
+ // Organize mat2 by columns
  for (const key in mat2.data) {
- const [row, col] = key.split(',').map(Number);
- if (!mat2ColToRowMap[col]) {
- mat2ColToRowMap[col] = new Set();
- }
- mat2ColToRowMap[col].add(row);
- }
- const intersectionMap = {};
- 
- for (const row1 in mat1RowToColMap) {
- const colsInRow1 = mat1RowToColMap[row1];
- 
- for (const col2 in mat2ColToRowMap) {
- const rowsInCol2 = mat2ColToRowMap[col2];
- const commonIndices = [...colsInRow1].filter(col => rowsInCol2.has(col));
- 
- if (commonIndices.length > 0) {
- const resultKey = `${row1},${col2}`;
- intersectionMap[resultKey] = commonIndices;
- }
- }
+   const [row, col] = key.split(',').map(Number);
+   if (!mat2ByCols[col]) {
+     mat2ByCols[col] = {};
+   }
+   mat2ByCols[col][row] = mat2.data[key];
  }
  
- // Now compute only the elements with potential non-zero values
- for (const resultKey in intersectionMap) {
- const [row1, col2] = resultKey.split(',').map(Number);
- const commonIndices = intersectionMap[resultKey];
- 
- let sum = 0;
- for (const k of commonIndices) {
- const val1 = mat1.getElement(row1, k);
- const val2 = mat2.getElement(k, col2);
- sum += val1 * val2;
- }
- 
- if (sum !== 0) {
- result.setElement(row1, col2, sum);
- }
+ // Perform multiplication only on non-zero elements
+ for (const row1 in mat1ByRows) {
+   const rowElements = mat1ByRows[row1];
+   
+   for (const col2 in mat2ByCols) {
+     const colElements = mat2ByCols[col2];
+     
+     let sum = 0;
+     let hasContribution = false;
+     
+     // Only iterate through non-zero elements in this row of mat1
+     for (const k in rowElements) {
+       // Check if there's a corresponding non-zero element in this column of mat2
+       if (colElements[k]) {
+         sum += rowElements[k] * colElements[k];
+         hasContribution = true;
+       }
+     }
+     
+     // Only set element if sum is non-zero
+     if (hasContribution && sum !== 0) {
+       result.setElement(parseInt(row1), parseInt(col2), sum);
+     }
+   }
  }
  
  return result;
 }
+
 // Test cases
 function runTests() {
  console.log("Running tests...");
