@@ -1,10 +1,11 @@
 const fs = require('fs');
+const readline = require('readline'); // we need this to ask the user stuff
 
 class SparseMatrix {
  constructor(matrixFilePath = null, numRows = 0, numCols = 0) {
  this.rows = numRows;
  this.cols = numCols;
- this.data = {}; // Store values as {'row,col': value}
+ this.data = {}; // this holds our matrix values
  
  if (matrixFilePath) {
  this._loadFromFile(matrixFilePath);
@@ -16,7 +17,7 @@ class SparseMatrix {
  const fileContent = fs.readFileSync(filePath, 'utf8');
  const lines = fileContent.split('\n');
  
- // Parse rows and columns
+ // Figure out how many rows and columns we have
  const rowsLine = lines[0].trim();
  const colsLine = lines[1].trim();
  
@@ -35,7 +36,7 @@ class SparseMatrix {
    const line = lines[i].trim();
    if (!line) continue; // Skip empty lines
    
-   // Custom parsing function instead of regex
+    // Break down each line to get the row, column, and value
    const elementData = this._parseElementLine(line);
    if (!elementData) {
      throw new Error("Input file has wrong format");
@@ -52,14 +53,13 @@ class SparseMatrix {
  }
  }
  
- // Custom parsing function
+  // This function reads lines and breaks them apart
  _parseElementLine(line) {
-   // Check if line starts with ( and ends with )
    if (!line.startsWith('(') || !line.endsWith(')')) {
      return null;
    }
    
-   // Extract content between parentheses
+   // Extract content between the parentheses
    const content = line.substring(1, line.length - 1);
    const parts = content.split(',');
    
@@ -85,7 +85,7 @@ class SparseMatrix {
  setElement(currRow, currCol, value) {
  const key = `${currRow},${currCol}`;
  if (value === 0) {
- delete this.data[key]; 
+ delete this.data[key]; // if the value is 0, we don't need to store it
  } else {
  this.data[key] = value;
  }
@@ -95,7 +95,7 @@ class SparseMatrix {
  let content = `rows=${this.rows}\n`;
  content += `cols=${this.cols}\n`;
  
- // Sort keys to write in order
+ // Put the matrix elements in order before saving
  const keys = Object.keys(this.data).sort((a, b) => {
  const [rowA, colA] = a.split(',').map(Number);
  const [rowB, colB] = b.split(',').map(Number);
@@ -117,14 +117,14 @@ function addMatrices(mat1, mat2) {
  
  const result = new SparseMatrix(null, maxRows, maxCols);
  
- // Add elements from mat1
+// Add up all the numbers from the first matrix
  for (const key in mat1.data) {
  const [row, col] = key.split(',').map(Number);
  const sum = mat1.data[key] + mat2.getElement(row, col);
  result.setElement(row, col, sum);
  }
  
- // Add elements that are only in mat2
+ // Now add any numbers that are only in the second matrix
  for (const key in mat2.data) {
  const [row, col] = key.split(',').map(Number);
  const matKey = `${row},${col}`;
@@ -141,14 +141,14 @@ function subtractMatrices(mat1, mat2) {
  
  const result = new SparseMatrix(null, maxRows, maxCols);
  
- // Process elements from mat1
+  // Subtract the second matrix from the first matrix
  for (const key in mat1.data) {
  const [row, col] = key.split(',').map(Number);
  const diff = mat1.data[key] - mat2.getElement(row, col);
  result.setElement(row, col, diff);
  }
  
- // Process elements that are only in mat2
+ // Handle numbers that are only in the second matrix and make them negative
  for (const key in mat2.data) {
  const [row, col] = key.split(',').map(Number);
  const matKey = `${row},${col}`;
@@ -173,11 +173,11 @@ function multiplyMatrices(mat1, mat2) {
  }
  
 
- // Group non-zero entries by rows for mat1 and by columns for mat2
+ // Organize our matrices to make multiplication faster
  const mat1ByRows = {};
  const mat2ByCols = {};
  
- // Organize mat1 by rows
+  // Group all the numbers in the first matrix by their rows
  for (const key in mat1.data) {
    const [row, col] = key.split(',').map(Number);
    if (!mat1ByRows[row]) {
@@ -186,7 +186,7 @@ function multiplyMatrices(mat1, mat2) {
    mat1ByRows[row][col] = mat1.data[key];
  }
  
- // Organize mat2 by columns
+ // Group all the numbers in the second matrix by their columns
  for (const key in mat2.data) {
    const [row, col] = key.split(',').map(Number);
    if (!mat2ByCols[col]) {
@@ -195,7 +195,7 @@ function multiplyMatrices(mat1, mat2) {
    mat2ByCols[col][row] = mat2.data[key];
  }
  
- // Perform multiplication only on non-zero elements
+ // multiply the matrices by going through each row and column
  for (const row1 in mat1ByRows) {
    const rowElements = mat1ByRows[row1];
    
@@ -205,16 +205,16 @@ function multiplyMatrices(mat1, mat2) {
      let sum = 0;
      let hasContribution = false;
      
-     // Only iterate through non-zero elements in this row of mat1
+      // Only look at positions where both matrices have numbers
      for (const k in rowElements) {
-       // Check if there's a corresponding non-zero element in this column of mat2
+        // Check if there is a matching number in the second matrix
        if (colElements[k]) {
          sum += rowElements[k] * colElements[k];
          hasContribution = true;
        }
      }
      
-     // Only set element if sum is non-zero
+      // Only save the result if it's not zero
      if (hasContribution && sum !== 0) {
        result.setElement(parseInt(row1), parseInt(col2), sum);
      }
@@ -228,7 +228,7 @@ function multiplyMatrices(mat1, mat2) {
 function runTests() {
  console.log("Running tests...");
  
- // Test matrix creation and element access
+ 
  const m1 = new SparseMatrix(null, 3, 3);
  m1.setElement(0, 1, 5);
  m1.setElement(1, 2, 10);
@@ -240,17 +240,17 @@ function runTests() {
  // Test addition
  const addResult = addMatrices(m1, m2);
  if (addResult.getElement(0, 1) === 7 && addResult.getElement(1, 2) === 18) {
- console.log("✅ Addition test passed");
+ console.log(" Addition test passed");
  } else {
- console.log("❌ Addition test failed");
+ console.log(" Addition test failed");
  }
  
  // Test subtraction
  const subResult = subtractMatrices(m1, m2);
  if (subResult.getElement(0, 1) === 3 && subResult.getElement(1, 2) === 2) {
- console.log("✅ Subtraction test passed");
+ console.log(" Subtraction test passed");
  } else {
- console.log("❌ Subtraction test failed");
+ console.log(" Subtraction test failed");
  }
  
  // Test multiplication
@@ -264,9 +264,9 @@ function runTests() {
  
  const multResult = multiplyMatrices(multM1, multM2);
  if (multResult.getElement(0, 0) === 11) { // 1*3 + 2*4 = 11
- console.log("✅ Multiplication test passed");
+ console.log(" Multiplication test passed");
  } else {
- console.log("❌ Multiplication test failed");
+ console.log(" Multiplication test failed");
  }
  
  console.log("Tests completed");
@@ -313,12 +313,12 @@ async function main() {
  } else if (choice === '3') {
  result = multiplyMatrices(mat1, mat2);
  } else {
- console.log("❌ Invalid choice!");
+ console.log("Invalid choice!");
  rl.close();
  return;
  }
  
- // If operation was successful, display and save the result
+// If everything worked, show the result and save it
  if (result) {
  console.log("\nResult matrix:");
  
@@ -330,16 +330,16 @@ async function main() {
  });
  
  result.saveToFile(outputFile);
- console.log(`✅ Result saved to ${outputFile}`);
+ console.log(` Result saved to ${outputFile}`);
  }
  } catch (error) {
- console.error(`❌ Error: ${error.message}`);
+ console.error(` Error: ${error.message}`);
  } finally {
  rl.close();
  }
 }
 
-// Process command line arguments
+// Check if the user wants to run tests or the main program
 if (process.argv.length > 2 && process.argv[2] === "test") {
  runTests();
 } else {
